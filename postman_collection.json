@@ -1,0 +1,55 @@
+{
+  "info": {
+    "name": "B9IS121 IPv4 Subnet Calculator",
+    "description": "Replace baseUrl with the public App Runner URL before sending requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "https://REPLACE-WITH-APP-RUNNER-URL"}
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {"method": "GET", "url": "{{baseUrl}}/health"},
+      "event": [{"listen": "test", "script": {"exec": [
+        "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('Healthy', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+      ]}}]
+    },
+    {
+      "name": "Version",
+      "request": {"method": "GET", "url": "{{baseUrl}}/api/version"},
+      "event": [{"listen": "test", "script": {"exec": [
+        "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('Has version', () => pm.expect(pm.response.json().version).to.be.a('string').and.not.empty);"
+      ]}}]
+    },
+    {
+      "name": "Valid /24 subnet",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\"cidr\":\"192.168.10.42/24\"}"},
+        "url": "{{baseUrl}}/api/subnets"
+      },
+      "event": [{"listen": "test", "script": {"exec": [
+        "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('Correct network', () => pm.expect(pm.response.json().network).to.eql('192.168.10.0/24'));",
+        "pm.test('254 usable hosts', () => pm.expect(pm.response.json().usable_hosts).to.eql(254));"
+      ]}}]
+    },
+    {
+      "name": "Invalid subnet",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\"cidr\":\"999.1.1.1/24\"}"},
+        "url": "{{baseUrl}}/api/subnets"
+      },
+      "event": [{"listen": "test", "script": {"exec": [
+        "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+        "pm.test('Clear error', () => pm.expect(pm.response.json().error).to.be.a('string').and.not.empty);"
+      ]}}]
+    }
+  ]
+}

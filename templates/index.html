@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IPv4 Subnet Calculator</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #17212b; background: #edf3f7; }
+    body { max-width: 720px; margin: 8vh auto; padding: 0 18px; }
+    main { background: white; border-radius: 18px; padding: 32px; box-shadow: 0 10px 30px #1233; }
+    h1 { margin-top: 0; }
+    label { display: block; font-weight: 650; margin-bottom: 8px; }
+    form { display: flex; gap: 10px; }
+    input { flex: 1; min-width: 0; padding: 12px; border: 1px solid #a7b6c5; border-radius: 8px; font: inherit; }
+    button { padding: 12px 18px; border: 0; border-radius: 8px; background: #1166ad; color: white; font: inherit; cursor: pointer; }
+    #message { min-height: 24px; color: #a32626; }
+    dl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    dt { color: #526477; }
+    dd { margin: 2px 0 0; font-weight: 650; overflow-wrap: anywhere; }
+    .result { padding: 12px 0; border-top: 1px solid #e4ebf1; }
+    footer { margin-top: 24px; font-size: .9rem; color: #526477; }
+    @media (max-width: 520px) { form { flex-direction: column; } dl { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>IPv4 Subnet Calculator</h1>
+    <p>Enter an IPv4 address and prefix to calculate its subnet. Example: <code>192.168.10.42/24</code>.</p>
+    <label for="cidr">IPv4 CIDR address</label>
+    <form id="calculator">
+      <input id="cidr" name="cidr" value="192.168.10.42/24" autocomplete="off" required>
+      <button type="submit">Calculate</button>
+    </form>
+    <p id="message" role="status"></p>
+    <dl id="results" hidden></dl>
+    <footer>Calculations only. This app does not inspect live network devices.</footer>
+  </main>
+  <script>
+    const fields = [
+      ["network", "Network"], ["netmask", "Subnet mask"],
+      ["network_address", "Network address"], ["broadcast_address", "Broadcast address"],
+      ["first_usable", "First usable address"], ["last_usable", "Last usable address"],
+      ["usable_hosts", "Usable host addresses"]
+    ];
+    document.getElementById("calculator").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = document.getElementById("message");
+      const results = document.getElementById("results");
+      results.hidden = true;
+      message.textContent = "";
+      try {
+        const response = await fetch("/api/subnets", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({cidr: document.getElementById("cidr").value})
+        });
+        const data = await response.json();
+        if (!response.ok) { message.textContent = data.error || "Request failed."; return; }
+        results.replaceChildren();
+        for (const [key, label] of fields) {
+          const wrapper = document.createElement("div");
+          wrapper.className = "result";
+          const term = document.createElement("dt");
+          term.textContent = label;
+          const detail = document.createElement("dd");
+          detail.textContent = String(data[key]);
+          wrapper.append(term, detail);
+          results.append(wrapper);
+        }
+        results.hidden = false;
+      } catch (_) { message.textContent = "Could not reach the server. Try again."; }
+    });
+  </script>
+</body>
+</html>
