@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: write
 
 concurrency:
   group: deploy-main
@@ -71,18 +72,42 @@ jobs:
           docker push "${image}:${GITHUB_SHA}"
           docker push "${image}:latest"
 
-      - name: Verify automatic cloud deployment
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.APP_RUNNER_URL != ''
+      - name: Publish public-cloud image to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
-          APP_RUNNER_URL: ${{ vars.APP_RUNNER_URL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag subnet-calculator:test "${image}:${GITHUB_SHA}"
+          docker tag subnet-calculator:test "${image}:latest"
+          docker push "${image}:${GITHUB_SHA}"
+          docker push "${image}:latest"
+
+      - name: Trigger Render deployment
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$RENDER_DEPLOY_HOOK_URL" ]; then
+            curl --fail --silent --show-error --request POST "$RENDER_DEPLOY_HOOK_URL"
+          else
+            echo "Render hook is not configured yet; image is ready in GHCR."
+          fi
+
+      - name: Verify automatic cloud deployment
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLIC_APP_URL != ''
+        env:
+          PUBLIC_APP_URL: ${{ vars.PUBLIC_APP_URL }}
         run: |
           for attempt in $(seq 1 60); do
-            response=$(curl --max-time 10 --fail --silent "${APP_RUNNER_URL%/}/api/version" || true)
+            response=$(curl --max-time 10 --fail --silent "${PUBLIC_APP_URL%/}/api/version" || true)
             if echo "$response" | grep -q "${GITHUB_SHA}"; then
-              echo "App Runner is serving commit ${GITHUB_SHA}"
+              echo "Cloud service is serving commit ${GITHUB_SHA}"
               exit 0
             fi
             sleep 10
           done
-          echo "App Runner did not serve commit ${GITHUB_SHA} within 10 minutes"
+          echo "Cloud service did not serve commit ${GITHUB_SHA} within 10 minutes"
           exit 1

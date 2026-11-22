@@ -1,6 +1,6 @@
 # IPv4 Subnet Calculator
 
-Individual B9IS121 practical project: a stateless web app deployed from a Git commit through GitHub Actions, Amazon ECR and AWS App Runner.
+Individual B9IS121 practical project: a stateless web app deployed from a Git commit through GitHub Actions, GitHub Container Registry and Render Free. The pipeline also publishes an image to Amazon ECR as an additional cloud registry demonstration.
 
 Repository: https://github.com/dileepvaradha7-source/Sub-Net-Calculator
 
@@ -26,30 +26,28 @@ curl -s -X POST http://localhost:8080/api/subnets \
 
 ```text
 Developer commit → GitHub main branch → GitHub Actions tests and Docker build
-  → Amazon ECR private repository → App Runner automatic image deployment
-  → public HTTPS URL → browser and Postman
+  → Amazon ECR + GitHub Container Registry → Render deploy hook
+  → Render Free pulls image → public HTTPS URL → browser and Postman
 ```
 
-AWS App Runner must use an image in an **ECR private repository in the same AWS account** for its automatic image deployment. Configure it to watch the `latest` tag. The workflow also pushes a commit-SHA tag for traceability. The `GET /api/version` response exposes the built commit SHA.
+The workflow pushes both `latest` and commit-SHA tags for traceability. Render pulls the public `latest` image from GitHub Container Registry when GitHub Actions calls its deploy hook. The `GET /api/version` response exposes the built commit SHA.
 
 ## AWS and GitHub setup checklist
 
-1. Confirm the AWS Billing console says **Free plan** and shows the available credit. Do not upgrade the account.
-2. Use `ap-southeast-2` (Sydney) for ECR, App Runner and the GitHub Actions `AWS_REGION` variable.
-3. Create an ECR **private** repository named `subnet-calculator`.
-4. Add GitHub as an IAM OpenID Connect identity provider with URL `https://token.actions.githubusercontent.com` and audience `sts.amazonaws.com`.
-5. Create an IAM role trusted only by this repository's `main` branch OIDC subject. Give it the minimum ECR permissions to authenticate and upload images to this repository. Follow the current GitHub and AWS instructions for the exact OIDC subject format, which can differ for newly created repositories.
-6. In the GitHub repository, create Actions secret `AWS_ROLE_ARN` with that role ARN; create Actions variables `AWS_REGION` and `ECR_REPOSITORY` (`subnet-calculator`). Never put AWS keys in the repository.
-7. Push to `main`. Watch the GitHub Actions run until tests, build, container smoke test and both ECR image pushes pass.
-8. In App Runner, create a service from the ECR **private** image tagged `latest`. Choose **Automatic** deployment, create/select the App Runner ECR access role, set port `8080`, and choose the smallest suitable CPU/memory option. Keep scaling limits low to protect the credit balance.
-9. Record the App Runner HTTPS URL as GitHub Actions variable `APP_RUNNER_URL`. The next workflow run will wait for that exact commit to appear on the live endpoint. Test `/`, `/health`, `/api/version` and `/api/subnets` with Postman.
-10. Make a second visible source change, push to `main`, and show the new GitHub Actions run, App Runner deployment and updated `/api/version` response.
+1. The AWS Free plan, ECR repository and branch-scoped GitHub OIDC role have been configured in `ap-southeast-2`. The first GitHub Actions run successfully tested, built and published the image to ECR.
+2. App Runner returned an explicit AWS Organizations service-control-policy deny. The Free plan does not permit this service, so the public host is Render Free. Do not upgrade the AWS account.
+3. Push this updated workflow to `main`. It publishes the same image to GitHub Container Registry at `ghcr.io/dileepvaradha7-source/sub-net-calculator:latest` and also retains the ECR publish stage.
+4. In GitHub Packages, make the new container package **public**, so Render can pull it without a credential.
+5. Create a **Free** Render web service from **Existing Image** using that GHCR image URL. Do not add a payment method or select paid compute. Set health check path `/health` if offered. The app listens on Render's `PORT` environment value.
+6. In the Render service's Settings page, copy its **Deploy Hook URL** into the GitHub Actions secret `RENDER_DEPLOY_HOOK_URL`. Keep this URL private.
+7. Add the Render HTTPS base URL as GitHub Actions variable `PUBLIC_APP_URL`.
+8. Make a second visible source change, push to `main`, and show the new GitHub Actions run, Render deploy event and updated `/api/version` response. The workflow triggers Render through the deploy hook after the image push and waits until the live endpoint serves the new commit SHA.
 
-App Runner charges for provisioned memory while the service is idle. Monitor AWS Billing credit usage. Keep the app running until the assessor has had access to it; pause or delete resources afterward.
+Render Free spins down after 15 idle minutes and can take about a minute to wake. Open the app before recording or testing. Without a payment method, Render says free services are suspended if included bandwidth is exhausted. Keep the app available for the assessor.
 
 ## Postman requests
 
-Use the public App Runner URL as `BASE_URL`.
+Use the public Render URL as `BASE_URL`.
 
 | Method | URL | Body | Expected result |
 | --- | --- | --- | --- |
@@ -60,17 +58,17 @@ Use the public App Runner URL as `BASE_URL`.
 
 ## Limits
 
-The app calculates IPv4 subnet information only. It does not discover devices or monitor a real network. It stores no state, so it can run on multiple stateless instances, but this demonstration uses conservative scaling limits. The public endpoints have no user accounts or request rate limits. App Runner, its image store and logs can use AWS credit even when the application receives little traffic.
+The app calculates IPv4 subnet information only. It does not discover devices or monitor a real network. It stores no state. Render Free is limited to one instance and has an ephemeral filesystem. The public endpoints have no user accounts or request rate limits. App Runner was unavailable because of the AWS Free plan's service-control-policy deny.
 
 ## Evidence to capture
 
 - GitHub repository and successful Actions run showing test, build and publish stages.
 - ECR repository with `latest` and commit-SHA tags.
-- App Runner deployment status and public URL.
+- Render deployment status and public URL.
 - Postman request URL, status code and response body for success and invalid input.
 - First and second commit SHA values, plus the updated live `/api/version` response.
 - Actual connectivity issue and fix, if one occurs. Do not invent an issue.
-- AWS Billing plan and credit status for cost evaluation (redact account number and personal details).
+- AWS App Runner access-denied error, explained as the reason for the documented cloud-host change.
 
 ## Primary documentation
 
@@ -79,3 +77,6 @@ The app calculates IPv4 subnet information only. It does not discover devices or
 - [AWS App Runner ECR access role](https://docs.aws.amazon.com/apprunner/latest/dg/security_iam_service-with-iam.html)
 - [AWS GitHub Actions credentials action](https://github.com/aws-actions/configure-aws-credentials)
 - [AWS App Runner pricing](https://aws.amazon.com/apprunner/pricing/)
+- [Render image-backed services](https://render.com/docs/deploying-an-image)
+- [Render deploy hooks](https://render.com/docs/deploy-hooks)
+- [Render Free limits](https://render.com/docs/free)
